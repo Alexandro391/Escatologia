@@ -1,0 +1,135 @@
+/*!
+ * html2pdf.js — fallback local para exportação via impressão
+ * Compatível com uso básico: html2pdf().set(opt).from(element).save()
+ * Este fallback abre a janela de impressão do navegador para "Salvar como PDF".
+ */
+(function (window, document) {
+  "use strict";
+
+  function safeName(value) {
+    return String(value || "documento.pdf")
+      .replace(/[\\/:*?"<>|]+/g, "-")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  function filename(options) {
+    var name = options && (options.filename || options.fileName || options.name);
+    name = safeName(name || "documento.pdf");
+    return /\.pdf$/i.test(name) ? name : name + ".pdf";
+  }
+
+  function copyStyles() {
+    var html = "";
+    document.querySelectorAll("style").forEach(function (el) {
+      html += "\n" + el.outerHTML;
+    });
+    document.querySelectorAll('link[rel="stylesheet"]').forEach(function (el) {
+      html += "\n" + el.outerHTML;
+    });
+    return html;
+  }
+
+  function makePrintHtml(source, options) {
+    var title = filename(options);
+    var clone = source ? source.cloneNode(true) : document.body.cloneNode(true);
+
+    clone.querySelectorAll("script").forEach(function (el) { el.remove(); });
+    clone.querySelectorAll(".app-bar,.barra-progresso,.painel,.no-print,[data-no-print]").forEach(function (el) {
+      el.remove();
+    });
+
+    var base = document.baseURI || window.location.href;
+
+    return "<!doctype html>" +
+      "<html lang='pt-br'>" +
+      "<head>" +
+      "<meta charset='utf-8'>" +
+      "<meta name='viewport' content='width=device-width, initial-scale=1'>" +
+      "<base href='" + String(base).replace(/'/g, "&#39;") + "'>" +
+      "<title>" + title.replace(/</g, "&lt;").replace(/>/g, "&gt;") + "</title>" +
+      copyStyles() +
+      "<style>" +
+      "@page{size:A4;margin:12mm;}" +
+      "html,body{background:#fff!important;}" +
+      "body{margin:0!important;padding:0!important;overflow:visible!important;print-color-adjust:exact;-webkit-print-color-adjust:exact;}" +
+      ".app-bar,.barra-progresso,.painel,.no-print,[data-no-print]{display:none!important;}" +
+      ".capitulo,.cap-corpo,.artigo{break-inside:auto;page-break-inside:auto;}" +
+      "h1,h2,h3{break-after:avoid;page-break-after:avoid;}" +
+      "p,.versiculo,.bloco-aluno,.aplicacao,.dialogo,.questao,.leituras{break-inside:avoid;page-break-inside:avoid;}" +
+      "a{color:inherit;text-decoration:none;}" +
+      "</style>" +
+      "</head>" +
+      "<body>" + clone.outerHTML + "</body>" +
+      "</html>";
+  }
+
+  function Worker() {
+    this.options = {};
+    this.source = null;
+  }
+
+  Worker.prototype.set = function (options) {
+    this.options = options || {};
+    return this;
+  };
+
+  Worker.prototype.from = function (source) {
+    this.source = typeof source === "string" ? document.querySelector(source) : source;
+    return this;
+  };
+
+  Worker.prototype.toPdf = function () {
+    return this;
+  };
+
+  Worker.prototype.outputPdf = function () {
+    return Promise.resolve(null);
+  };
+
+  Worker.prototype.save = function (name) {
+    if (name) this.options.filename = name;
+
+    var html = makePrintHtml(this.source || document.body, this.options);
+    var w = window.open("", "_blank");
+
+    if (!w) {
+      alert("O navegador bloqueou a janela de impressão. Libere pop-ups e tente novamente.");
+      return Promise.resolve(false);
+    }
+
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
+
+    function doPrint() {
+      try {
+        w.focus();
+        w.print();
+      } catch (e) {
+        console.error("Falha ao imprimir:", e);
+      }
+    }
+
+    if (w.document.readyState === "complete") {
+      setTimeout(doPrint, 500);
+    } else {
+      w.onload = function () { setTimeout(doPrint, 500); };
+      setTimeout(doPrint, 1500);
+    }
+
+    return Promise.resolve(true);
+  };
+
+  Worker.prototype.then = function (resolve, reject) {
+    return Promise.resolve(this).then(resolve, reject);
+  };
+
+  function html2pdf() {
+    return new Worker();
+  }
+
+  html2pdf.Worker = Worker;
+  html2pdf.version = "local-fallback-1.2.0";
+  window.html2pdf = html2pdf;
+})(window, document);
